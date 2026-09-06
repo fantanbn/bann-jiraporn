@@ -1670,7 +1670,7 @@
       if (d.otherItems && d.otherItems.length > 0) {
          d.otherItems.forEach(item => {
             if (item.cost !== 0) {
-               oTxt += \`\\n\${lineIdx}. \${item.label || 'อื่นๆ'}: \${item.cost.toLocaleString()} บ.\`;
+               oTxt += `\n${lineIdx}. ${item.label || 'อื่นๆ'}: ${item.cost.toLocaleString()} บ.`;
                lineIdx++;
             }
          });
