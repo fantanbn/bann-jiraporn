@@ -222,7 +222,7 @@ function render(){
  M.forEach(m=>{if(m.live)m.dlg.innerHTML=m.render()});
 }
 function headerHTML(){
- const tabs=[['home','🏠 หน้าแรก'],['week','📅 ตารางคำศัพท์'],['drill','🎯 ชุดฝึก/ทดสอบ'],['lib','📚 คลังคำศัพท์'],['set','⚙️ ตั้งค่า']];
+ const tabs=[['home','🏠 หน้าแรก'],['week','📅 ตารางคำศัพท์'],['drill','🎯 ชุดฝึก/ทดสอบ'],['lib','📚 คลังคำศัพท์'],['set','⚙️ ตั้งค่า '+Sync.icon()];
  return `<div class="top"><div class="brand"><span class="logo">🦌</span><div><h1>Little Fawn Art Studio</h1><p>Word Studio • ศูนย์รวมคำศัพท์ของหนู ๆ</p></div></div>
  <div class="actions"><button class="btn orange" data-act="import">📷 เพิ่มจากรูป</button><button class="btn mint" data-act="add-word">➕ เพิ่มคำศัพท์</button><button class="btn lav" data-act="mgr">👧 นักเรียน</button></div></div>
  <nav class="tabs">${tabs.map(([k,l])=>`<button class="tab ${ui.tab===k?'on':''}" data-act="tab" data-t="${k}">${l}</button>`).join('')}</nav>
@@ -345,7 +345,7 @@ function openDrill(id){
 /* --- Settings --- */
 function viewSet(){
  const c=S.cfg,g=c.provider==='gemini';
- return `<section class="sec"><h2>⚙️ ตั้งค่า Vision / OCR</h2>
+ return syncHTML()+`<section class="sec"><h2>⚙️ ตั้งค่า Vision / OCR</h2>
  <div class="rcard crayon"><div class="note">Vision (หลัก): ใช้ AI อ่านรูปใบงานลายมือ แปลคำ และสร้างคำอ่านไทย ต้องใส่ API key ของตัวเอง • OCR สำรอง (Tesseract.js) ทำงานอัตโนมัติเมื่อไม่มี key หรือ Vision ผิดพลาด (ต้องออนไลน์เพื่อโหลดตัวอ่าน) • คีย์เก็บไว้ในเครื่องนี้เท่านั้น</div>
  <label class="f">ผู้ให้บริการ<select class="inp" data-change="cfg-provider"><option value="gemini" ${g?'selected':''}>Google Gemini</option><option value="openai" ${!g?'selected':''}>OpenAI / เข้ากันได้กับ OpenAI</option></select></label>
  <label class="f">API key<input class="inp" type="password" autocomplete="off" value="${esc(c.key)}" data-cfg="key" placeholder="วาง API key ที่นี่"></label>
@@ -400,7 +400,7 @@ async function removeWords(ids){ids=new Set(ids);const gone=S.words.filter(w=>id
 async function purgeImages(list){const used=new Set(S.words.map(w=>w.imageId).filter(Boolean));const o=[...new Set(list)].filter(i=>!used.has(i));if(o.length){await DB.del('images',o);await DB.del('full',o);o.forEach(i=>delete S.thumbs[i])}}
 function openView(id){const w=S.words.find(x=>x.id===id);if(!w)return;
  const m=openModal(()=>`<div class="dh"><h3>🔎 ${esc(w.text)}</h3><button class="x" data-act="close">✖</button></div>${wcard(w,{stu:true,noact:true})}<p style="font-size:.85rem">นักเรียน: ${esc(stu(w.sid)?.name||'-')} • วันที่ ${TH_DAYS[dow(w.date)]} ${fdateY(w.date)}</p><div id="vimg">${w.imageId?'<span class="spin"></span> กำลังโหลดรูป…':'<p class="empty">ไม่มีภาพต้นทาง</p>'}</div>`,{bd:true});
- if(w.imageId)DB.get('full',w.imageId).then(r=>{const b=m.dlg.querySelector('#vimg');if(b)b.innerHTML=r?`<img class="full" src="${r.data}" alt="ภาพต้นทาง">`:'<p class="empty">ไม่พบรูป</p>'})}
+ if(w.imageId)DB.get('full',w.imageId).then(r=>r||Sync.fetchFull(w.imageId)).then(r=>{const b=m.dlg.querySelector('#vimg');if(b)b.innerHTML=r?`<img class="full" src="${r.data}" alt="ภาพต้นทาง">`:'<p class="empty">ไม่พบรูป</p>'})}
 A['test-llm']=async()=>{try{const r=await llm('Reply with JSON {"ok":true}');toast(r.ok?'✅ เชื่อมต่อสำเร็จ':'ตอบกลับแล้วแต่รูปแบบแปลก')}catch(e){toast('❌ '+e.message)}};
 A.sample=async()=>{const s=cur(),d=today();const L=[['apple','แอปเปิล','แอ็ป-เปิ้ล','en'],['banana','กล้วย','บะ-หนา-หน่า','en'],['school','โรงเรียน','สะ-กูล','en'],['rabbit','กระต่าย','แร็บ-บิ๊ท','en'],['butterfly','ผีเสื้อ','บัด-เตอะ-ฟลาย','en'],['โรงเรียน','school','โรง-เรียน','th'],['ผีเสื้อ','butterfly','ผี-เสื้อ','th'],['กระต่าย','rabbit','กระ-ต่าย','th'],['ดอกไม้','flower','ดอก-ไม้','th'],['ท้องฟ้า','sky','ท้อง-ฟ้า','th']];
  const add=L.filter(x=>!S.words.some(w=>w.sid===s.id&&w.date===d&&norm(w.text)===norm(x[0]))).map((x,i)=>({id:uid(),sid:s.id,date:d,lang:x[3],text:x[0],meaning:x[1],reading:x[2],hard:i%4===0,source:'manual',createdAt:Date.now()+i}));
@@ -559,7 +559,7 @@ function renderImp(){if(imp&&M.includes(imp.m))imp.m.dlg.innerHTML=impHTML()}
 function impSet(t){const[f,i]=t.dataset.imp.split(':'),it=imp?.items[+i];if(!it)return;it[f]=t.type==='checkbox'?t.checked:t.value;if(f==='on'||f==='lang')renderImp()}
 A.import=()=>{imp={sid:ui.sid,date:today(),lang:'auto',img:null,items:[],engine:'',busy:false,msg:''};imp.m=openModal(impHTML,{})};
 C['imp-file']=async el=>{const f=el.files[0];if(!f)return;imp.busy=true;imp.msg='กำลังเตรียมรูป…';imp.items=[];imp.engine='';renderImp();
- try{const im=await loadImage(f);imp.img={data:scale(im,1600,.82),thumb:scale(im,220,.7)}}catch(e){imp.busy=false;renderImp();return toast(e.message)}
+ try{const im=await loadImage(f);imp.img={data:scale(im,1280,.7),thumb:scale(im,220,.7)}}catch(e){imp.busy=false;renderImp();return toast(e.message)}
  await impProcess(false)};
 A['imp-redo']=el=>impProcess(el.dataset.ocr==='1');
 async function impProcess(forceOCR){
@@ -600,6 +600,7 @@ function uiRefresh(){clearTimeout(_rt);_rt=setTimeout(()=>{const a=document.acti
 async function reloadState(){
  const [st,wd,dr,im]=await Promise.all(['students','words','drills','images'].map(s=>DB.all(s)));
  S.students=st.sort((a,b)=>a.createdAt-b.createdAt);S.words=wd;S.drills=dr;S.thumbs={};im.forEach(i=>S.thumbs[i.id]=i.thumb);
+  Sync.loadTombs(cf.find(x=>x.id==='tombs'));
  if(!S.students.length){const s=newStudent('น้องกวาง','ป.2 • 8 ปี',COLORS[0],'🦌');s.isDefault=true;S.students.push(s);await DB.put('students',s)}
  if(!stu(ui.sid))ui.sid=S.students[0].id}
 
@@ -724,7 +725,7 @@ A['sync-out']=async()=>{if(!await ask('ออกจากระบบซิง�
  if(!S.students.length){const s=newStudent('น้องกวาง','ป.2 • 8 ปี',COLORS[0],'🦌');S.students.push(s);await DB.put('students',s)}
  try{ui.sid=localStorage.getItem('lf_sid')}catch{}
  if(!stu(ui.sid))ui.sid=S.students[0].id;
- autoDrills();render();
+ autoDrills();render();Sync.init();
  try{navigator.storage?.persist?.()}catch{}
 })().catch(e=>{console.error(e);document.body.insertAdjacentHTML('afterbegin','<p style="padding:20px">เริ่มระบบไม่สำเร็จ: '+esc(e.message)+'</p>')});
 </script>
