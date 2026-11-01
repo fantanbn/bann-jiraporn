@@ -714,7 +714,7 @@ A['imp-save']=async()=>{
 
 /* ====== Cloud sync (Firebase Firestore) ====== */
 /* ใส่ค่าจาก Firebase Console → Project settings → Your apps → Config (ปล่อยว่าง = ใช้แบบเครื่องเดียว) */
-const firebaseConfig={apiKey:"AIzaSyCDwP5pdMnmC7ySIevlHbK9N461-DSDUhI",authDomain:"word-studio-9e21e.firebaseapp.com",projectId:"word-studio-9e21e",storageBucket:"word-studio-9e21e.firebasestorage.app",messagingSenderId:"488700056208",appId:"1:488700056208:web:a84f8c3b399fb8936a3e15"};
+const FIREBASE_CONFIG={apiKey:"AIzaSyCDwP5pdMnmC7ySIevlHbK9N461-DSDUhI",authDomain:"word-studio-9e21e.firebaseapp.com",projectId:"word-studio-9e21e",storageBucket:"word-studio-9e21e.firebasestorage.app",messagingSenderId:"488700056208",appId:"1:488700056208:web:a84f8c3b399fb8936a3e15"};
 let _rt=0;
 function uiRefresh(){clearTimeout(_rt);_rt=setTimeout(()=>{const a=document.activeElement;
  if(a&&a.closest&&a.closest('#view')&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)){$('#hdr').innerHTML=headerHTML();return}render()},250)}
