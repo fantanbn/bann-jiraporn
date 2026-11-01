@@ -142,6 +142,9 @@ label.f{display:grid;gap:3px;font-weight:700;font-size:.9rem;margin-bottom:8px}l
 <div id="modals"></div><div id="toasts"></div>
 <script>
 'use strict';
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 /* ====== Utils ====== */
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -589,7 +592,129 @@ A['imp-save']=async()=>{
  render();toast(`✅ เพิ่ม ${add.length} คำให้ ${stu(sid).name} วันที่ ${fdate(date)}`);
  if(had+add.length>DAY_MAX){shakeEls($$(`[data-day="${date}"]`));toast(`⚠️ วันที่ ${fdate(date)} เกิน ${DAY_MAX} คำ`)}
  if(!imp.items.length)closeModal(imp.m);else renderImp()};
+/* ====== Cloud sync (Firebase Firestore) ====== */
+const FIREBASE_CONFIG={apiKey:"AIzaSyCDwP5pdMnmC7ySIevlHbK9N461-DSDUhI",authDomain:"word-studio-9e21e.firebaseapp.com",projectId:"word-studio-9e21e",storageBucket:"word-studio-9e21e.firebasestorage.app",messagingSenderId:"488700056208",appId:"1:488700056208:web:a84f8c3b399fb8936a3e15"};
+let _rt=0;
+function uiRefresh(){clearTimeout(_rt);_rt=setTimeout(()=>{const a=document.activeElement;
+ if(a&&a.closest&&a.closest('#view')&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)){$('#hdr').innerHTML=headerHTML();return}render()},250)}
+async function reloadState(){
+ const [st,wd,dr,im]=await Promise.all(['students','words','drills','images'].map(s=>DB.all(s)));
+ S.students=st.sort((a,b)=>a.createdAt-b.createdAt);S.words=wd;S.drills=dr;S.thumbs={};im.forEach(i=>S.thumbs[i.id]=i.thumb);
+ if(!S.students.length){const s=newStudent('น้องกวาง','ป.2 • 8 ปี',COLORS[0],'🦌');s.isDefault=true;S.students.push(s);await DB.put('students',s)}
+ if(!stu(ui.sid))ui.sid=S.students[0].id}
 
+const Sync={
+ enabled:false,user:null,status:'off',msg:'',tombs:{},remote:null,remoteTombs:null,ready:0,unsubs:[],pend:0,live:false,gen:0,q:Promise.resolve(),
+ DATA:['students','words','drills','images'],ALL:['students','words','drills','images','full'],
+ icon(){return !this.enabled?'':!this.user?'☁️':this.status==='ok'?'☁️✓':this.status==='error'?'☁️⚠️':'☁️⏳'},
+ loadTombs(r){this.tombs=(r&&r.map)||{}},
+ saveTombs(){return DB.raw.put('settings',{id:'tombs',map:this.tombs})},
+ col(n){return this.fs.collection('users').doc(this.user.uid).collection(n)},
+ init(){
+  if(!FIREBASE_CONFIG.apiKey)return;
+  if(!window.firebase){this.status='error';this.msg='โหลด Firebase SDK ไม่ได้ (ต้องออนไลน์)';return}
+  try{firebase.initializeApp(FIREBASE_CONFIG);this.auth=firebase.auth();this.fs=firebase.firestore();this.enabled=true;this.status='login';
+   this.auth.onAuthStateChanged(u=>{this.stop();this.user=u;if(u)this.start();else{this.status='login';this.msg=''}uiRefresh()})
+  }catch(e){this.fail(e)}},
+ signIn(e,p){return this.auth.signInWithEmailAndPassword(e,p)},
+ signUp(e,p){return this.auth.createUserWithEmailAndPassword(e,p)},
+ signOut(){return this.auth.signOut()},
+ stop(){this.gen++;this.unsubs.forEach(f=>{try{f()}catch{}});this.unsubs=[];this.live=false;this.pend=0},
+ start(){
+  const g=++this.gen;this.status='syncing';this.msg='กำลังซิงก์…';this.ready=0;this.live=false;this.pend=0;
+  this.remote={students:new Map(),words:new Map(),drills:new Map(),images:new Map()};this.remoteTombs=new Set();
+  const names=[...this.DATA,'tombs'];
+  names.forEach(n=>{let first=true;
+   this.unsubs.push(this.col(n).onSnapshot(snap=>{
+    this.q=this.q.then(async()=>{if(g!==this.gen)return;await this.onSnap(n,snap);
+     if(first){first=false;if(++this.ready===names.length)await this.reconcile()}}).catch(e=>this.fail(e))},
+    e=>this.fail(e)))});
+  uiRefresh()},
+ async onSnap(n,snap){
+  let changed=false;
+  for(const ch of snap.docChanges()){
+   if(ch.type==='removed')continue;const r=ch.doc.data();
+   if(n==='tombs'){
+    const k=r.s+'/'+r.id;this.remoteTombs.add(k);
+    if(!(this.tombs[k]>=r.at)){this.tombs[k]=r.at;await this.saveTombs()}
+    const loc=await DB.get(r.s,r.id);
+    if(loc&&(loc.updatedAt||0)<=r.at){await DB.raw.del(r.s,r.id);changed=true}
+   }else{
+    this.remote[n].set(r.id,r.updatedAt||0);
+    const t=this.tombs[n+'/'+r.id];if(t!==undefined&&t>=(r.updatedAt||0))continue;
+    const loc=await DB.get(n,r.id);
+    if(!loc||(loc.updatedAt||0)<(r.updatedAt||0)){await DB.raw.put(n,r);changed=true}
+   }}
+  if(changed&&this.live){await reloadState();uiRefresh()}},
+ async reconcile(){
+  this.live=true;
+  const stuL=await DB.all('students'),wordL=await DB.all('words');
+  // เครื่องใหม่: ทิ้งนักเรียนตั้งต้นที่ยังว่าง ถ้าในคลาวด์มีนักเรียนอยู่แล้ว
+  if(this.remote.students.size){
+   for(const s of stuL){
+    if(s.isDefault&&!this.remote.students.has(s.id)&&!wordL.some(w=>w.sid===s.id)){
+     await DB.raw.del('students',s.id);
+     for(const d of await DB.all('drills'))if(d.sid===s.id)await DB.raw.del('drills',d.id)}}}
+  // ส่งบันทึกการลบที่ค้างอยู่
+  for(const [k,at] of Object.entries(this.tombs)){
+   const i=k.indexOf('/'),n=k.slice(0,i),id=k.slice(i+1),loc=await DB.get(n,id),dead=!loc||(loc.updatedAt||0)<=at;
+   if(loc&&dead)await DB.raw.del(n,id);
+   if(!this.remoteTombs.has(k)){const ops=[this.col('tombs').doc(n+'__'+id).set({s:n,id,at})];if(dead)ops.push(this.col(n).doc(id).delete());this.track(Promise.all(ops))}}
+  // ส่งข้อมูลในเครื่องที่ใหม่กว่า/ยังไม่มีในคลาวด์
+  for(const n of this.DATA){
+   const out=[];
+   for(const r of await DB.all(n)){
+    const t=this.tombs[n+'/'+r.id];
+    if(t!==undefined&&t>=(r.updatedAt||0)){await DB.raw.del(n,r.id);continue}
+    if(!r.updatedAt){r.updatedAt=Date.now();await DB.raw.put(n,r)}
+    const ru=this.remote[n].get(r.id);
+    if(ru===undefined||r.updatedAt>ru)out.push(r)}
+   if(out.length)this.track(this.pushDocs(n,out));
+   if(n==='images'&&out.length){const fl=[];for(const r of out){const f=await DB.get('full',r.id);if(f)fl.push(f)}if(fl.length)this.track(this.pushDocs('full',fl))}}
+  await reloadState();autoDrills();this.settle();uiRefresh()},
+ async pushDocs(n,list){
+  for(let i=0;i<list.length;i+=10){
+   await Promise.all(list.slice(i,i+10).map(r=>{
+    if(n==='full'&&(r.data||'').length>900000){console.warn('รูปใหญ่เกิน 1MB ไม่ซิงก์',r.id);return}
+    return this.col(n).doc(r.id).set(r)}))}},
+ push(n,list){if(!this.live||!this.user||!this.ALL.includes(n))return;this.track(this.pushDocs(n,list))},
+ remove(n,ids){
+  if(!this.ALL.includes(n))return;const at=Date.now();ids.forEach(id=>{this.tombs[n+'/'+id]=at});this.saveTombs();
+  if(!this.live||!this.user)return;
+  this.track(Promise.all(ids.flatMap(id=>[this.col(n).doc(id).delete(),this.col('tombs').doc(n+'__'+id).set({s:n,id,at})])))},
+ async fetchFull(id){
+  if(!this.user)return null;
+  try{const d=await this.col('full').doc(id).get();if(!d.exists)return null;const r=d.data();await DB.raw.put('full',r);return r}catch{return null}},
+ track(p){this.pend++;this.status='syncing';p.then(()=>{this.pend--;this.settle()},e=>{this.pend=Math.max(0,this.pend-1);this.fail(e)})},
+ settle(){if(this.pend>0)return;this.status='ok';this.msg='ซิงก์ล่าสุด '+new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});uiRefresh()},
+ fail(e){console.error(e);this.status='error';this.msg=e&&e.code==='permission-denied'?'ไม่มีสิทธิ์เขียนข้อมูล ตรวจ Security Rules':(e&&e.message)||String(e);uiRefresh()}
+};
+
+/* ครอบ DB: ใส่ updatedAt + ส่งขึ้นคลาวด์ + บันทึกการลบ */
+(()=>{const raw={put:DB.put.bind(DB),putMany:DB.putMany.bind(DB),del:DB.del.bind(DB)};DB.raw=raw;
+ DB.put=async(s,o)=>{const t=s!=='settings';if(t)o.updatedAt=Date.now();await raw.put(s,o);if(t)Sync.push(s,[o])};
+ DB.putMany=async(s,a)=>{const t=s!=='settings';if(t){const n=Date.now();a.forEach(o=>o.updatedAt=n)}await raw.putMany(s,a);if(t)Sync.push(s,a)};
+ DB.del=async(s,ids)=>{ids=[].concat(ids);await raw.del(s,ids);if(s!=='settings')Sync.remove(s,ids)};
+})();
+
+/* หน้าตั้งค่าซิงก์ */
+function syncHTML(){
+ const head='<section class="sec"><h2>☁️ ซิงก์ข้อมูลข้ามเครื่อง <small>Firebase</small></h2><div class="rcard crayon">';
+ if(!Sync.enabled)return head+`<div class="note">${FIREBASE_CONFIG.apiKey?esc(Sync.msg||'เริ่ม Firebase ไม่สำเร็จ'):'ยังไม่ได้ตั้งค่า Firebase — ใส่ค่า FIREBASE_CONFIG ในไฟล์ HTML'}</div></div></section>`;
+ if(!Sync.user)return head+`<p>ล็อกอินบัญชีเดียวกันทุกเครื่อง ข้อมูลจะตรงกัน</p>
+  <label class="f">อีเมล<input class="inp" id="sy-email" type="email" autocomplete="username"></label>
+  <label class="f">รหัสผ่าน (อย่างน้อย 6 ตัว)<input class="inp" id="sy-pw" type="password" autocomplete="current-password"></label>
+  <div class="row"><button class="btn orange" data-act="sync-in">เข้าสู่ระบบ</button><button class="btn mint" data-act="sync-up">สร้างบัญชีใหม่ (ครั้งแรก)</button></div></div></section>`;
+ const lab={ok:'✅ ซิงก์แล้ว',syncing:'⏳ กำลังซิงก์…',error:'⚠️ มีปัญหา'}[Sync.status]||'';
+ return head+`<p>บัญชี: <b>${esc(Sync.user.email)}</b></p><p>${lab} ${esc(Sync.msg)}</p>
+  <div class="row"><button class="btn sky" data-act="sync-now">🔄 ซิงก์ใหม่</button><button class="btn" data-act="sync-out">ออกจากระบบ</button></div></div></section>`}
+function authMsg(e){const m={'auth/invalid-credential':'อีเมลหรือรหัสผ่านไม่ถูกต้อง','auth/wrong-password':'รหัสผ่านไม่ถูกต้อง','auth/user-not-found':'ไม่พบบัญชีนี้ (กด “สร้างบัญชีใหม่” ถ้าเป็นครั้งแรก)','auth/email-already-in-use':'อีเมลนี้มีบัญชีแล้ว ให้กด “เข้าสู่ระบบ”','auth/weak-password':'รหัสผ่านสั้นเกินไป','auth/invalid-email':'รูปแบบอีเมลไม่ถูกต้อง','auth/operation-not-allowed':'ยังไม่ได้เปิด Email/Password ใน Firebase','auth/network-request-failed':'ไม่มีอินเทอร์เน็ต','auth/unauthorized-domain':'โดเมนนี้ยังไม่ได้เพิ่มใน Authorized domains'};return m[e.code]||e.message}
+async function syncAuth(el,fn){const box=el.closest('.rcard'),e=$('#sy-email',box).value.trim(),p=$('#sy-pw',box).value;
+ if(!e||p.length<6)return toast('กรอกอีเมลและรหัสผ่าน (อย่างน้อย 6 ตัว)');
+ try{await Sync[fn](e,p);toast('☁️ เข้าสู่ระบบแล้ว')}catch(err){toast('❌ '+authMsg(err))}}
+A['sync-in']=el=>syncAuth(el,'signIn');A['sync-up']=el=>syncAuth(el,'signUp');
+A['sync-now']=()=>{Sync.stop();Sync.start()};
+A['sync-out']=async()=>{if(!await ask('ออกจากระบบซิงก์?','ข้อมูลในเครื่องนี้ยังอยู่ แต่จะไม่ซิงก์จนกว่าจะเข้าสู่ระบบใหม่','ออกจากระบบ'))return;await Sync.signOut()};
 /* ====== Init ====== */
 (async function init(){
  await DB.open();
