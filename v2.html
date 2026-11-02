@@ -145,9 +145,9 @@ label.f,div.f{display:grid;gap:3px;font-weight:700;font-size:.9rem;margin-bottom
 <body>
 <div id="app"><div id="hdr"></div><main id="view"></main></div>
 <div id="modals"></div><div id="toasts"></div>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/js/10.12.2/-app-compat.js"></script>
+<script src="https://www.gstatic.com/js/10.12.2/-auth-compat.js"></script>
+<script src="https://www.gstatic.com/js/10.12.2/-firestore-compat.js"></script>
 <script>
 'use strict';
 /* ====== Utils ====== */
@@ -793,7 +793,7 @@ A['imp-save']=async()=>{
 
 /* ====== Cloud sync (Firebase Firestore) ====== */
 /* ใส่ค่าจาก Firebase Console → Project settings → Your apps → Config (ปล่อยว่าง = ใช้แบบเครื่องเดียว) */
-const FIREBASE_CONFIG={apiKey:"",authDomain:"",projectId:"",storageBucket:"",messagingSenderId:"",appId:""};
+const FIREBASE_CONFIG={apiKey:"AIzaSyCDwP5pdMnmC7ySIevlHbK9N461-DSDUhI",authDomain:"word-studio-9e21e.firebaseapp.com",projectId:"word-studio-9e21e",storageBucket:"word-studio-9e21e.firebasestorage.app",messagingSenderId:"488700056208",appId:"1:488700056208:web:a84f8c3b399fb8936a3e15"};
 let _rt=0;
 function uiRefresh(){clearTimeout(_rt);_rt=setTimeout(()=>{const a=document.activeElement;
  if(a&&a.closest&&a.closest('#view')&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)){$('#hdr').innerHTML=headerHTML();return}render()},250)}
